@@ -1,1033 +1,257 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bay Area Transit Tracker</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        header {
-            background-color: #3b5998;
-            color: white;
-            padding: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 1000;
-        }
-        button {
-            background-color: rgba(255,255,255,0.2);
-            border: 1px solid white;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-left: 0.5rem;
-        }
-        main {
-            display: flex;
-            flex: 1;
-            position: relative;
-            overflow: hidden;
-        }
-        #map {
-            height: 100%;
-            width: 100%;
-        }
-        .sidebar {
-            width: 280px;
-            background-color: white;
-            position: absolute;
-            right: 0;
-            top: 0;
-            height: 100%;
-            overflow-y: auto;
-            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
-            padding: 1rem;
-            transform: translateX(0);
-            transition: transform 0.3s ease;
-            z-index: 1000;
-        }
-        .sidebar.hidden {
-            transform: translateX(100%);
-        }
-        h2, h3 {
-            margin-bottom: 1rem;
-            color: #333;
-        }
-        .filter-section {
-            margin-bottom: 1.5rem;
-        }
-        .agency-list {
-            list-style: none;
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            padding: 0.5rem;
-        }
-        .agency-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }
-        .agency-color {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 0.5rem;
-        }
-        select {
-            width: 100%;
-            padding: 0.5rem;
-            margin-top: 0.5rem;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-        }
-        .error {
-            background-color: #ffeeee;
-            border: 1px solid #ffcccc;
-            padding: 0.5rem;
-            margin-bottom: 1rem;
-            border-radius: 4px;
-            display: none;
-        }
-        .loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(255,255,255,0.9);
-            padding: 1rem 2rem;
-            border-radius: 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            display: none;
-            z-index: 9999;
-            text-align: center;
-        }
-        .loading-spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3b5998;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 0.5rem auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .status-bar {
-            background-color: #f0f0f0;
-            padding: 0.5rem 1rem;
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.9rem;
-        }
-        .legend {
-            position: absolute;
-            bottom: 30px;
-            right: 10px;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            z-index: 500;
-            max-width: 200px;
-            font-size: 12px;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 5px;
-        }
-        .legend-color {
-            width: 12px;
-            height: 12px;
-            margin-right: 8px;
-            border-radius: 50%;
-        }
-        .legend h4 {
-            margin: 0 0 8px 0;
-        }
-        .mode-toggle {
-            display: flex;
-            margin-bottom: 1rem;
-        }
-        .mode-toggle label {
-            margin-right: 0.5rem;
-        }
-        .vehicle-list {
-            list-style: none;
-            margin-top: 0.5rem;
-            max-height: 150px;
-            overflow-y: auto;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            padding: 0.5rem;
-        }
-        .vehicle-item {
-            padding: 0.5rem;
-            border-bottom: 1px solid #eee;
-            cursor: pointer;
-        }
-        .vehicle-item:hover {
-            background-color: #f5f5f5;
-        }
-        .vehicle-item:last-child {
-            border-bottom: none;
-        }
-        .debug {
-            position: fixed;
-            bottom: 30px;
-            left: 10px;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            z-index: 500;
-            max-width: 300px;
-            font-size: 12px;
-            display: none;
-        }
-        @media (prefers-color-scheme: dark) {
-            .sidebar { background-color: #333; color: #f0f0f0; }
-            .status-bar { background-color: #222; color: #f0f0f0; }
-            select { background-color: #444; color: white; border-color: #555; }
-            .error { background-color: #442222; color: #ffcccc; border-color: #663333; }
-            .loading { background-color: #333; color: white; }
-            h2, h3 { color: #f0f0f0; }
-            .agency-list, .vehicle-list { border-color: #444; background-color: #2a2a2a; }
-            .vehicle-item { border-color: #444; }
-            .vehicle-item:hover { background-color: #3a3a3a; }
-            .legend, .debug { background-color: #333; color: #f0f0f0; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
-        }
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 80%;
-                max-width: 300px;
-            }
-            header h1 {
-                font-size: 1.2rem;
-            }
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <h1>Bay Area Transit Tracker</h1>
-        <div>
-            <button id="refresh-btn">Refresh</button>
-            <button id="toggle-panel">Panel</button>
-        </div>
-    </header>
+// Replace your vehicle fetching function with this:
+async function fetchVehicles() {
+    if (!showVehicles.checked) return;
     
-    <main>
-        <div id="map"></div>
+    loading.style.display = 'block';
+    errorMessage.style.display = 'none';
+    
+    try {
+        // Try fetching from specific agencies instead of RG
+        // Get a list of monitored agencies from our active agencies
+        const monitoredAgencies = agencies
+            .filter(a => a.monitored && activeAgencies.has(a.id))
+            .slice(0, 3); // Limit to 3 agencies to avoid rate limiting
         
-        <div id="sidebar" class="sidebar">
-            <div id="error-message" class="error">
-                Error connecting to transit API. Using fallback data.
-            </div>
-            
-            <div class="filter-section">
-                <h2>Transit Filters</h2>
-                <div class="mode-toggle">
-                    <label><input type="checkbox" id="show-stops" checked> Show Stations</label>
-                    <label><input type="checkbox" id="show-vehicles" checked> Show Vehicles</label>
-                </div>
+        if (monitoredAgencies.length === 0) {
+            throw new Error('No monitored agencies selected');
+        }
+        
+        // Start with an empty vehicles array
+        vehicles = [];
+        
+        // Fetch vehicles for each monitored agency
+        for (const agency of monitoredAgencies) {
+            try {
+                console.log(`Fetching vehicles for ${agency.name} (${agency.id})`);
                 
-                <label for="region-select">Region:</label>
-                <select id="region-select">
-                    <option value="all">All Bay Area</option>
-                    <option value="sf" selected>San Francisco</option>
-                    <option value="east-bay">East Bay</option>
-                    <option value="south-bay">South Bay</option>
-                    <option value="peninsula">Peninsula</option>
-                    <option value="north-bay">North Bay</option>
-                </select>
-            </div>
-            
-            <div class="filter-section">
-                <h3>Transit Agencies</h3>
-                <ul id="agency-list" class="agency-list">
-                    <!-- Dynamically populated -->
-                </ul>
-            </div>
-            
-            <div class="filter-section">
-                <h3>Nearby Vehicles</h3>
-                <ul id="vehicle-list" class="vehicle-list">
-                    <!-- Dynamically populated -->
-                </ul>
-            </div>
-        </div>
+                // Using the SIRI VehicleMonitoring API with specific agency
+                const response = await fetch(
+                    `https://api.511.org/transit/VehicleMonitoring?api_key=${API_KEY}&agency=${agency.id}&format=json`
+                );
+                
+                if (!response.ok) {
+                    console.warn(`API error for ${agency.id}: ${response.status}`);
+                    continue;
+                }
+                
+                const data = await response.json();
+                processAgencyVehicles(data, agency);
+            } catch (agencyError) {
+                console.warn(`Error fetching vehicles for agency ${agency.id}:`, agencyError);
+                // Continue with next agency instead of failing completely
+            }
+        }
         
-        <div class="legend" id="legend">
-            <h4>Transit Agencies</h4>
-            <div id="agency-legend">
-                <!-- Dynamically populated -->
-            </div>
-        </div>
+        // If we didn't get any vehicles, throw an error to trigger the fallback
+        if (vehicles.length === 0) {
+            throw new Error('No vehicles found from any agencies');
+        }
         
-        <div id="loading" class="loading">
-            <div class="loading-spinner"></div>
-            <div>Loading transit data...</div>
-        </div>
+        // Update UI
+        updateVehicleMarkers();
+        updateNearbyVehiclesList();
         
-        <div id="debug" class="debug"></div>
-    </main>
-    
-    <div class="status-bar">
-        <span id="last-update">Last updated: Never</span>
-        <span id="vehicle-count">0 vehicles tracked</span>
-    </div>
+        // Update status
+        const now = new Date();
+        lastUpdate.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+        vehicleCount.textContent = `${vehicles.length} vehicles tracked`;
+        
+        // Hide loading and error if shown
+        loading.style.display = 'none';
+        errorMessage.style.display = 'none';
+        
+    } catch (error) {
+        console.error('Error fetching vehicles:', error);
+        useDemoVehicles();
+    }
+}
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // API Key - Your 511.org API key
-            const API_KEY = '825a0905-cdd2-4179-b699-f5f46b26528e';
-            
-            // DOM Elements
-            const mapElement = document.getElementById('map');
-            const sidebar = document.getElementById('sidebar');
-            const togglePanel = document.getElementById('toggle-panel');
-            const refreshBtn = document.getElementById('refresh-btn');
-            const agencyList = document.getElementById('agency-list');
-            const vehicleList = document.getElementById('vehicle-list');
-            const agencyLegend = document.getElementById('agency-legend');
-            const regionSelect = document.getElementById('region-select');
-            const loading = document.getElementById('loading');
-            const errorMessage = document.getElementById('error-message');
-            const lastUpdate = document.getElementById('last-update');
-            const vehicleCount = document.getElementById('vehicle-count');
-            const showStops = document.getElementById('show-stops');
-            const showVehicles = document.getElementById('show-vehicles');
-            const debug = document.getElementById('debug');
-            
-            // Initialize map
-            const map = L.map('map', {
-                center: [37.77, -122.42], // San Francisco by default
-                zoom: 12,
-                zoomControl: true,
-                attributionControl: true
-            });
-            
-            // Base map layer - CartoDB positron
-            const baseMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 19
-            }).addTo(map);
-            
-            // Create layers for vehicles and stops
-            const vehicleLayer = L.layerGroup().addTo(map);
-            const stopLayer = L.layerGroup().addTo(map);
-            
-            // Predefined region views for the Bay Area
-            const regions = {
-                'sf': { center: [37.77, -122.42], zoom: 13, bounds: [[37.70, -122.51], [37.84, -122.35]] },
-                'east-bay': { center: [37.80, -122.25], zoom: 12, bounds: [[37.60, -122.35], [37.90, -122.10]] },
-                'south-bay': { center: [37.35, -121.96], zoom: 11, bounds: [[37.20, -122.10], [37.45, -121.80]] },
-                'peninsula': { center: [37.50, -122.25], zoom: 11, bounds: [[37.40, -122.50], [37.70, -122.10]] },
-                'north-bay': { center: [38.00, -122.50], zoom: 11, bounds: [[37.85, -122.70], [38.15, -122.30]] },
-                'all': { center: [37.80, -122.25], zoom: 10, bounds: [[37.10, -122.70], [38.20, -121.70]] }
-            };
-            
-            // Define Bay Area transit agencies with their colors
-            const agencyColors = {
-                'BA': '#0099cc', // BART
-                'SF': '#e61919', // SF Muni
-                'AC': '#4db848', // AC Transit
-                'CT': '#e6291f', // Caltrain
-                'SM': '#cb3927', // SamTrans
-                'GG': '#ff5f00', // Golden Gate Transit
-                'SC': '#6699cc', // VTA
-                'WC': '#3b5998', // WestCAT
-                'CC': '#faa61a', // County Connection
-                'FS': '#347235', // FAST
-                'ST': '#3ab54a', // SolTrans
-                'MA': '#0f6bad', // Marin Transit
-                'GF': '#ff9900', // Golden Gate Ferry
-                'SF': '#1c66b7', // SF Bay Ferry
-                'SR': '#aa4199', // Santa Rosa CityBus
-                'VN': '#8c68a6', // Vine Transit/Napa
-                'SA': '#009933', // SMART Train
-                'DE': '#008080', // Tri Delta Transit
-                'WH': '#6c4c1a'  // Wheels/LAVTA
-            };
-            
-            // State variables
-            let agencies = [];
-            let vehicles = [];
-            let stops = [];
-            let activeAgencies = new Set();
-            
-            // UI event handlers
-            
-            // Toggle sidebar visibility
-            togglePanel.addEventListener('click', function() {
-                sidebar.classList.toggle('hidden');
-            });
-            
-            // Region selection
-            regionSelect.addEventListener('change', function() {
-                const region = regions[this.value] || regions.all;
-                if (region.bounds) {
-                    map.fitBounds(region.bounds);
-                } else {
-                    map.setView(region.center, region.zoom);
-                }
-            });
-            
-            // Toggle stops/stations visibility
-            showStops.addEventListener('change', function() {
-                if (this.checked) {
-                    map.addLayer(stopLayer);
-                    fetchStopsForActiveAgencies();
-                } else {
-                    map.removeLayer(stopLayer);
-                }
-            });
-            
-            // Toggle vehicles visibility
-            showVehicles.addEventListener('change', function() {
-                if (this.checked) {
-                    map.addLayer(vehicleLayer);
-                    fetchVehicles();
-                } else {
-                    map.removeLayer(vehicleLayer);
-                }
-            });
-            
-            // Refresh button
-            refreshBtn.addEventListener('click', function() {
-                refreshData();
-            });
-            
-            // Helper functions
-            
-            // Create a marker icon for vehicles
-            function createVehicleIcon(color) {
-                return L.divIcon({
-                    className: 'vehicle-icon',
-                    html: `<div style="background-color: ${color}; width: 10px; height: 10px; border-radius: 50%; border: 2px solid white;"></div>`,
-                    iconSize: [10, 10],
-                    iconAnchor: [5, 5]
-                });
+// Add this new function to process vehicles from a specific agency
+function processAgencyVehicles(data, agency) {
+    if (!data || !data.Siri || !data.Siri.ServiceDelivery || 
+        !data.Siri.ServiceDelivery.VehicleMonitoringDelivery || 
+        !data.Siri.ServiceDelivery.VehicleMonitoringDelivery.VehicleActivity) {
+        console.warn(`Invalid vehicle data format for agency ${agency.id}`);
+        return;
+    }
+    
+    // Handle both array and single object responses
+    const vehicleActivities = Array.isArray(data.Siri.ServiceDelivery.VehicleMonitoringDelivery.VehicleActivity) 
+        ? data.Siri.ServiceDelivery.VehicleMonitoringDelivery.VehicleActivity
+        : [data.Siri.ServiceDelivery.VehicleMonitoringDelivery.VehicleActivity];
+    
+    vehicleActivities.forEach(activity => {
+        if (!activity.MonitoredVehicleJourney) return;
+        
+        const journey = activity.MonitoredVehicleJourney;
+        
+        // Skip vehicles without location data
+        if (!journey.VehicleLocation || 
+            !journey.VehicleLocation.Latitude || 
+            !journey.VehicleLocation.Longitude) return;
+        
+        // Ensure latitude and longitude are valid numbers
+        const lat = parseFloat(journey.VehicleLocation.Latitude);
+        const lng = parseFloat(journey.VehicleLocation.Longitude);
+        
+        if (isNaN(lat) || isNaN(lng)) return;
+        
+        // Check if latitude and longitude are in reasonable bounds for Bay Area
+        if (lat < 36.5 || lat > 38.5 || lng < -123.0 || lng > -121.0) return;
+        
+        const vehicle = {
+            id: journey.VehicleRef || `${agency.id}-${Math.random().toString(36).substring(2, 9)}`,
+            agency: agency.id,
+            agencyName: agency.name,
+            color: agency.color,
+            position: {
+                lat: lat,
+                lng: lng
+            },
+            bearing: journey.Bearing || 0,
+            route: journey.LineRef || 'Unknown',
+            destination: journey.DestinationName || 'Unknown',
+            timestamp: activity.RecordedAtTime
+        };
+        
+        vehicles.push(vehicle);
+    });
+    
+    console.log(`Added ${vehicleActivities.length} vehicles from ${agency.name}`);
+}
+
+// Modify the fetchAgencies function to better handle errors
+async function fetchAgencies() {
+    loading.style.display = 'block';
+    errorMessage.style.display = 'none';
+    
+    try {
+        const response = await fetch(`https://api.511.org/transit/operators?api_key=${API_KEY}&format=json`);
+        
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+        
+        let data = await response.json();
+        
+        // Check if the data is in the expected format
+        if (!Array.isArray(data)) {
+            // If it's not an array, it might be wrapped in a 'content' property
+            // or be in some other unexpected format
+            if (data.content && Array.isArray(data.content)) {
+                data = data.content;
+            } else {
+                console.warn('Unexpected API response format:', data);
+                throw new Error('Unexpected API response format');
             }
-            
-            // Create a marker icon for stops/stations
-            function createStopIcon() {
-                return L.divIcon({
-                    className: 'stop-icon',
-                    html: `<div style="background-color: black; width: 6px; height: 6px; border-radius: 50%; border: 1px solid white;"></div>`,
-                    iconSize: [6, 6],
-                    iconAnchor: [3, 3]
-                });
-            }
-            
-            // Parse XML to DOM
-            function parseXML(text) {
-                return new DOMParser().parseFromString(text, 'text/xml');
-            }
-            
-            // Get a random color for agencies without defined colors
-            function getRandomColor() {
-                const letters = '0123456789ABCDEF';
-                let color = '#';
-                for (let i = 0; i < 6; i++) {
-                    color += letters[Math.floor(Math.random() * 16)];
-                }
-                return color;
-            }
-            
-            // Fetch agencies from 511.org API
-            async function fetchAgencies() {
-                loading.style.display = 'block';
-                errorMessage.style.display = 'none';
-                
-                try {
-                    const response = await fetch(`https://api.511.org/transit/operators?api_key=${API_KEY}&format=json`);
-                    
-                    if (!response.ok) {
-                        throw new Error(`API error: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    // Process agencies data - format varies
-                    agencies = data.map(agency => ({
-                        id: agency.Id,
-                        name: agency.Name,
-                        color: agencyColors[agency.Id] || getRandomColor(),
-                        monitored: agency.Monitored === 'true' || agency.Monitored === true
-                    })).filter(agency => {
-                        // Filter out non-transit agencies or internal IDs
-                        return agency.id !== '5E' && agency.id !== '5F' && agency.id !== '5O' && agency.id !== '5S';
-                    });
-                    
-                    // Sort agencies alphabetically
-                    agencies.sort((a, b) => a.name.localeCompare(b.name));
-                    
-                    // Initialize active agencies
-                    activeAgencies = new Set(agencies.map(a => a.id));
-                    
-                    // Update UI
-                    populateAgencyUI();
-                    
-                    // Fetch initial data
-                    fetchVehicles();
-                    if (showStops.checked) {
-                        fetchStopsForActiveAgencies();
-                    }
-                    
-                } catch (error) {
-                    console.error('Error fetching agencies:', error);
-                    useFallbackAgencies();
-                } finally {
-                    loading.style.display = 'none';
-                }
-            }
-            
-            // Use fallback agency data if API fails
-            function useFallbackAgencies() {
-                agencies = [
-                    { id: 'BA', name: 'BART', color: '#0099cc', monitored: true },
-                    { id: 'SF', name: 'SF Muni', color: '#e61919', monitored: true },
-                    { id: 'AC', name: 'AC Transit', color: '#4db848', monitored: true },
-                    { id: 'CT', name: 'Caltrain', color: '#e6291f', monitored: true },
-                    { id: 'SM', name: 'SamTrans', color: '#cb3927', monitored: true },
-                    { id: 'GG', name: 'Golden Gate Transit', color: '#ff5f00', monitored: true },
-                    { id: 'SC', name: 'VTA', color: '#6699cc', monitored: true }
-                ];
-                
-                // Initialize active agencies
-                activeAgencies = new Set(agencies.map(a => a.id));
-                
-                // Update UI
-                populateAgencyUI();
-                
-                // Show error
-                errorMessage.style.display = 'block';
-                errorMessage.textContent = 'Unable to fetch transit agencies. Using basic agency data.';
-                
-                // Fetch fallback data
-                fetchVehicles();
-            }
-            
-            // Populate agency UI elements (sidebar and legend)
-            function populateAgencyUI() {
-                // Clear existing content
-                agencyList.innerHTML = '';
-                agencyLegend.innerHTML = '';
-                
-                // Add agencies to sidebar list
-                agencies.forEach(agency => {
-                    const li = document.createElement('li');
-                    li.className = 'agency-item';
-                    
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.id = `agency-${agency.id}`;
-                    checkbox.checked = activeAgencies.has(agency.id);
-                    checkbox.dataset.agency = agency.id;
-                    
-                    const color = document.createElement('span');
-                    color.className = 'agency-color';
-                    color.style.backgroundColor = agency.color;
-                    
-                    const label = document.createElement('label');
-                    label.htmlFor = `agency-${agency.id}`;
-                    label.textContent = agency.name;
-                    
-                    checkbox.addEventListener('change', function() {
-                        if (this.checked) {
-                            activeAgencies.add(agency.id);
-                            if (showStops.checked) {
-                                fetchStops(agency.id);
-                            }
-                        } else {
-                            activeAgencies.delete(agency.id);
-                        }
-                        updateMap();
-                    });
-                    
-                    li.appendChild(checkbox);
-                    li.appendChild(color);
-                    li.appendChild(label);
-                    agencyList.appendChild(li);
-                    
-                    // Add to legend if active
-                    if (activeAgencies.has(agency.id)) {
-                        const legendItem = document.createElement('div');
-                        legendItem.className = 'legend-item';
-                        
-                        const legendColor = document.createElement('div');
-                        legendColor.className = 'legend-color';
-                        legendColor.style.backgroundColor = agency.color;
-                        
-                        const legendLabel = document.createElement('span');
-                        legendLabel.textContent = agency.name;
-                        
-                        legendItem.appendChild(legendColor);
-                        legendItem.appendChild(legendLabel);
-                        agencyLegend.appendChild(legendItem);
-                    }
-                });
-            }
-            
-            // Fetch vehicle positions from the 511.org VehicleMonitoring API
-            async function fetchVehicles() {
-                if (!showVehicles.checked) return;
-                
-                loading.style.display = 'block';
-                
-                try {
-                    // Using the SIRI VehicleMonitoring API which returns JSON
-                    const response = await fetch(`https://api.511.org/transit/VehicleMonitoring?api_key=${API_KEY}&agency=RG&format=json`);
-                    
-                    if (!response.ok) {
-                        throw new Error(`API error: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    // Process the SIRI format data
-                    processVehicles(data);
-                    
-                    // Update UI
-                    updateVehicleMarkers();
-                    updateNearbyVehiclesList();
-                    
-                    // Update status
-                    const now = new Date();
-                    lastUpdate.textContent = `Last updated: ${now.toLocaleTimeString()}`;
-                    vehicleCount.textContent = `${vehicles.length} vehicles tracked`;
-                    
-                    // Hide loading and error if shown
-                    loading.style.display = 'none';
-                    errorMessage.style.display = 'none';
-                    
-                } catch (error) {
-                    console.error('Error fetching vehicles:', error);
-                    
-                    // Try alternative Vehicle Positions API
-                    try {
-                        // This is the GTFS-RT format which returns binary protobuf data
-                        // For now we'll use the VehicleMonitoring demo data since we don't have a protobuf parser
-                        useDemoVehicles();
-                    } catch (alt_error) {
-                        console.error('Both vehicle APIs failed:', alt_error);
-                        useDemoVehicles();
-                    }
-                }
-            }
-            
-            // Process vehicles from 511.org SIRI format data
-            function processVehicles(data) {
-                // Clear existing vehicles
-                vehicles = [];
-                
-                if (!data || !data.Siri || !data.Siri.ServiceDelivery || 
-                    !data.Siri.ServiceDelivery.VehicleMonitoringDelivery || 
-                    !data.Siri.ServiceDelivery.VehicleMonitoringDelivery[0].VehicleActivity) {
-                    console.error('Invalid vehicle data format');
-                    return;
-                }
-                
-                const vehicleActivities = data.Siri.ServiceDelivery.VehicleMonitoringDelivery[0].VehicleActivity;
-                
-                vehicleActivities.forEach(activity => {
-                    if (!activity.MonitoredVehicleJourney) return;
-                    
-                    const journey = activity.MonitoredVehicleJourney;
-                    
-                    // Skip vehicles without location data
-                    if (!journey.VehicleLocation || 
-                        !journey.VehicleLocation.Latitude || 
-                        !journey.VehicleLocation.Longitude) return;
-                    
-                    const agencyId = journey.OperatorRef;
-                    
-                    // Skip agencies not in our active list
-                    if (!activeAgencies.has(agencyId)) return;
-                    
-                    // Find agency in our list
-                    const agency = agencies.find(a => a.id === agencyId) || {
-                        name: agencyId,
-                        color: agencyColors[agencyId] || '#999999'
-                    };
-                    
-                    const vehicle = {
-                        id: journey.VehicleRef || `unknown-${Math.random().toString(36).substring(2, 9)}`,
-                        agency: agencyId,
-                        agencyName: agency.name,
-                        color: agency.color,
-                        position: {
-                            lat: journey.VehicleLocation.Latitude,
-                            lng: journey.VehicleLocation.Longitude
-                        },
-                        bearing: journey.Bearing || 0,
-                        route: journey.LineRef || 'Unknown',
-                        destination: journey.DestinationName || 'Unknown',
-                        timestamp: activity.RecordedAtTime
-                    };
-                    
-                    vehicles.push(vehicle);
-                });
-                
-                console.log(`Processed ${vehicles.length} vehicles from API`);
-            }
-            
-            // Use demo vehicles data if API fails
-            function useDemoVehicles() {
-                // Clear existing vehicles
-                vehicles = [];
-                
-                // Show loading while generating demo data
-                loading.style.display = 'block';
-                
-                // Define regions for agencies to ensure proper positioning
-                const agencyRegions = {
-                    'SF': { // SF Muni
-                        center: [37.77, -122.42],
-                        radius: 0.05
-                    },
-                    'BA': { // BART
-                        lines: [
-                            [[37.77, -122.42], [37.80, -122.27]], // SF to East Bay
-                            [[37.77, -122.42], [37.70, -122.45]], // SF to south
-                            [[37.80, -122.27], [37.60, -122.10]], // East Bay
-                        ]
-                    },
-                    'AC': { // AC Transit
-                        center: [37.80, -122.27],
-                        radius: 0.1
-                    },
-                    'SM': { // SamTrans - correctly positioned in San Mateo County
-                        center: [37.53, -122.30],
-                        radius: 0.1
-                    },
-                    'CT': { // Caltrain
-                        lines: [
-                            [[37.78, -122.39], [37.31, -121.90]], // SF to San Jose
-                        ]
-                    },
-                    'GG': { // Golden Gate Transit
-                        center: [37.95, -122.50],
-                        radius: 0.1
-                    },
-                    'SC': { // VTA
-                        center: [37.35, -121.90],
-                        radius: 0.1
-                    }
-                };
-                
-                // Generate vehicles for each active agency
-                agencies.filter(agency => activeAgencies.has(agency.id)).forEach(agency => {
-                    const count = Math.floor(Math.random() * 10) + 5; // 5-15 vehicles per agency
-                    const region = agencyRegions[agency.id];
-                    
-                    if (!region) {
-                        // Default positioning for agencies without defined regions
-                        for (let i = 0; i < count; i++) {
-                            const lat = 37.7 + Math.random() * 0.3; // Bay Area general area
-                            const lng = -122.4 + Math.random() * 0.3;
-                            
-                            vehicles.push({
-                                id: `${agency.id}-demo-${i}`,
-                                agency: agency.id,
-                                agencyName: agency.name,
-                                color: agency.color,
-                                position: { lat, lng },
-                                bearing: Math.floor(Math.random() * 360),
-                                route: `${Math.floor(Math.random() * 100)}`,
-                                destination: ['Downtown', 'Airport', 'Transit Center'][Math.floor(Math.random() * 3)],
-                                timestamp: new Date().toISOString()
-                            });
-                        }
-                        return;
-                    }
-                    
-                    if (region.center && region.radius) {
-                        // Circular region agencies
-                        for (let i = 0; i < count; i++) {
-                            // Random point within radius of center
-                            const angle = Math.random() * Math.PI * 2;
-                            const radius = Math.random() * region.radius;
-                            const lat = region.center[0] + radius * Math.cos(angle);
-                            const lng = region.center[1] + radius * Math.sin(angle);
-                            
-                            vehicles.push({
-                                id: `${agency.id}-demo-${i}`,
-                                agency: agency.id,
-                                agencyName: agency.name,
-                                color: agency.color,
-                                position: { lat, lng },
-                                bearing: Math.floor(Math.random() * 360),
-                                route: `${Math.floor(Math.random() * 100)}`,
-                                destination: ['Downtown', 'Airport', 'Transit Center'][Math.floor(Math.random() * 3)],
-                                timestamp: new Date().toISOString()
-                            });
-                        }
-                    } else if (region.lines) {
-                        // Line-based agencies like BART and Caltrain
-                        for (let i = 0; i < count; i++) {
-                            // Pick a random line
-                            const line = region.lines[Math.floor(Math.random() * region.lines.length)];
-                            // Random point along the line
-                            const t = Math.random();
-                            const lat = line[0][0] + t * (line[1][0] - line[0][0]);
-                            const lng = line[0][1] + t * (line[1][1] - line[0][1]);
-                            
-                            vehicles.push({
-                                id: `${agency.id}-demo-${i}`,
-                                agency: agency.id,
-                                agencyName: agency.name,
-                                color: agency.color,
-                                position: { lat, lng },
-                                bearing: Math.floor(Math.random() * 360),
-                                route: `${Math.floor(Math.random() * 100)}`,
-                                destination: ['Downtown', 'Airport', 'Transit Center'][Math.floor(Math.random() * 3)],
-                                timestamp: new Date().toISOString()
-                            });
-                        }
-                    }
-                });
-                
-                // Update UI
-                updateVehicleMarkers();
-                updateNearbyVehiclesList();
-                
-                // Update status
-                const now = new Date();
-                lastUpdate.textContent = `Last updated: ${now.toLocaleTimeString()} (demo data)`;
-                vehicleCount.textContent = `${vehicles.length} vehicles tracked (demo)`;
-                
-                // Show error and hide loading
-                errorMessage.style.display = 'block';
-                errorMessage.textContent = 'Unable to fetch live vehicle data. Using demo data.';
-                loading.style.display = 'none';
-            }
-            
-            // Update vehicle markers on the map
-            function updateVehicleMarkers() {
-                // Clear existing markers
-                vehicleLayer.clearLayers();
-                
-                // Add new markers for active agencies
-                vehicles.filter(v => activeAgencies.has(v.agency)).forEach(vehicle => {
-                    const marker = L.marker([vehicle.position.lat, vehicle.position.lng], {
-                        icon: createVehicleIcon(vehicle.color),
-                        title: `${vehicle.agencyName} - ${vehicle.route}`
-                    });
-                    
-                    marker.bindPopup(`
-                        <strong>${vehicle.agencyName}</strong><br>
-                        Route: ${vehicle.route}<br>
-                        To: ${vehicle.destination}
-                    `);
-                    
-                    marker.on('click', function() {
-                        this.openPopup();
-                    });
-                    
-                    vehicleLayer.addLayer(marker);
-                });
-            }
-            
-            // Fetch stops for all active agencies
-            function fetchStopsForActiveAgencies() {
-                if (!showStops.checked) return;
-                
-                // Clear existing stops
-                stops = [];
-                stopLayer.clearLayers();
-                
-                // Fetch stops for each active agency
-                for (const agencyId of activeAgencies) {
-                    fetchStops(agencyId);
-                }
-            }
-            
-            // Fetch stops for a specific agency
-            async function fetchStops(agencyId) {
-                if (!showStops.checked) return;
-                
-                try {
-                    const response = await fetch(`https://api.511.org/transit/stops?api_key=${API_KEY}&operator_id=${agencyId}&format=json`);
-                    
-                    if (!response.ok) {
-                        throw new Error(`API error: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (!Array.isArray(data)) {
-                        console.error('Invalid stops data format for agency:', agencyId, data);
-                        return;
-                    }
-                    
-                    processStops(data, agencyId);
-                    
-                } catch (error) {
-                    console.error(`Error fetching stops for agency ${agencyId}:`, error);
-                }
-            }
-            
-            // Process stops data from API
-            function processStops(data, agencyId) {
-                // Find agency info
-                const agency = agencies.find(a => a.id === agencyId) || {
-                    name: agencyId,
-                    color: agencyColors[agencyId] || '#999999'
-                };
-                
-                // Process each stop
-                data.forEach(stop => {
-                    if (!stop.geometry || !stop.geometry.coordinates || !stop.properties) return;
-                    
-                    // IMPORTANT: coordinates in GeoJSON are [longitude, latitude]
-                    const [longitude, latitude] = stop.geometry.coordinates;
-                    
-                    const stopObj = {
-                        id: stop.properties.id || `${agencyId}-stop-${Math.random().toString(36).substring(2, 9)}`,
-                        name: stop.properties.name || 'Unknown Stop',
-                        agency: agencyId,
-                        agencyName: agency.name,
-                        position: {
-                            // Correctly swap coordinates - API returns [longitude, latitude]
-                            lat: latitude,
-                            lng: longitude
-                        },
-                        lines: stop.properties.lines ? stop.properties.lines.map(l => l.id).join(', ') : ''
-                    };
-                    
-                    stops.push(stopObj);
-                    
-                    // Add stop marker to the map
-                    const marker = L.marker([stopObj.position.lat, stopObj.position.lng], {
-                        icon: createStopIcon(),
-                        title: stopObj.name
-                    });
-                    
-                    marker.bindPopup(`
-                        <strong>${stopObj.name}</strong><br>
-                        ${stopObj.agencyName}<br>
-                        ${stopObj.lines ? `Lines: ${stopObj.lines}` : ''}
-                    `);
-                    
-                    stopLayer.addLayer(marker);
-                });
-                
-                console.log(`Added ${data.length} stops for ${agency.name}`);
-            }
-            
-            // Update nearby vehicles list
-            function updateNearbyVehiclesList() {
-                // Clear existing list
-                vehicleList.innerHTML = '';
-                
-                // Get map center and bounds
-                const center = map.getCenter();
-                const bounds = map.getBounds();
-                
-                // Filter vehicles within the current map view
-                const visibleVehicles = vehicles.filter(v => {
-                    return activeAgencies.has(v.agency) && 
-                           bounds.contains([v.position.lat, v.position.lng]);
-                });
-                
-                // Calculate distance to center and sort
-                const nearbyVehicles = visibleVehicles.map(v => {
-                    const distance = map.distance(
-                        [v.position.lat, v.position.lng],
-                        [center.lat, center.lng]
-                    );
-                    return { ...v, distance };
-                }).sort((a, b) => a.distance - b.distance).slice(0, 10);
-                
-                // Add to list
-                nearbyVehicles.forEach(vehicle => {
-                    const item = document.createElement('li');
-                    item.className = 'vehicle-item';
-                    
-                    const color = document.createElement('span');
-                    color.className = 'agency-color';
-                    color.style.backgroundColor = vehicle.color;
-                    
-                    item.innerHTML = `
-                        ${color.outerHTML}
-                        <strong>${vehicle.agencyName}</strong><br>
-                        Route ${vehicle.route} to ${vehicle.destination}
-                    `;
-                    
-                    item.addEventListener('click', function() {
-                        // Pan to vehicle position
-                        map.setView([vehicle.position.lat, vehicle.position.lng], 16);
-                        
-                        // Find and open the popup for this vehicle
-                        vehicleLayer.eachLayer(layer => {
-                            const pos = layer.getLatLng();
-                            if (pos.lat === vehicle.position.lat && pos.lng === vehicle.position.lng) {
-                                layer.openPopup();
-                            }
-                        });
-                    });
-                    
-                    vehicleList.appendChild(item);
-                });
-                
-                // Show message if no vehicles are nearby
-                if (nearbyVehicles.length === 0) {
-                    const item = document.createElement('li');
-                    item.className = 'vehicle-item';
-                    item.textContent = 'No vehicles in current view';
-                    vehicleList.appendChild(item);
-                }
-            }
-            
-            // Update map with active filters
-            function updateMap() {
-                updateVehicleMarkers();
-                updateNearbyVehiclesList();
-                // Stops are updated when fetched
-            }
-            
-            // Refresh all data
-            function refreshData() {
-                if (showVehicles.checked) {
-                    fetchVehicles();
-                }
-                if (showStops.checked) {
-                    fetchStopsForActiveAgencies();
-                }
-            }
-            
-            // Set initial region view
-            const defaultRegion = regions[regionSelect.value] || regions.sf;
-            map.setView(defaultRegion.center, defaultRegion.zoom);
-            
-            // Map events
-            map.on('moveend', updateNearbyVehiclesList);
-            
-            // Auto-refresh vehicles every 30 seconds
-            setInterval(fetchVehicles, 30000);
-            
-            // Initial data load
-            fetchAgencies();
+        }
+        
+        // Process agencies data - format varies
+        agencies = data.map(agency => ({
+            id: agency.Id || agency.id,
+            name: agency.Name || agency.name,
+            color: agencyColors[agency.Id || agency.id] || getRandomColor(),
+            monitored: agency.Monitored === 'true' || agency.Monitored === true
+        })).filter(agency => {
+            // Filter out non-transit agencies or internal IDs
+            return agency.id !== '5E' && agency.id !== '5F' && agency.id !== '5O' && agency.id !== '5S';
         });
-    </script>
-</body>
-</html>
+        
+        // Sort agencies alphabetically
+        agencies.sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Initialize active agencies
+        activeAgencies = new Set(agencies.map(a => a.id));
+        
+        // Update UI
+        populateAgencyUI();
+        
+        // Fetch initial data
+        fetchVehicles();
+        if (showStops.checked) {
+            fetchStopsForActiveAgencies();
+        }
+        
+    } catch (error) {
+        console.error('Error fetching agencies:', error);
+        useFallbackAgencies();
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+// Modified function to handle loading GTFS feeds for specific routes
+async function fetchStops(agencyId) {
+    if (!showStops.checked) return;
+    
+    try {
+        const response = await fetch(`https://api.511.org/transit/stops?api_key=${API_KEY}&operator_id=${agencyId}&format=json`);
+        
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Check for different data formats and handle accordingly
+        if (data.Contents && data.Contents.dataObjects && data.Contents.dataObjects.ScheduledStopPoint) {
+            // Handle NeTEx format
+            const stopsData = Array.isArray(data.Contents.dataObjects.ScheduledStopPoint) 
+                ? data.Contents.dataObjects.ScheduledStopPoint 
+                : [data.Contents.dataObjects.ScheduledStopPoint];
+            
+            processNeTexStops(stopsData, agencyId);
+        } else if (Array.isArray(data)) {
+            // Handle GeoJSON format
+            processStops(data, agencyId);
+        } else {
+            console.error('Unknown stops data format for agency:', agencyId, data);
+        }
+        
+    } catch (error) {
+        console.error(`Error fetching stops for agency ${agencyId}:`, error);
+    }
+}
+
+// Add a function to process NeTEx format stops
+function processNeTexStops(stopsData, agencyId) {
+    // Find agency info
+    const agency = agencies.find(a => a.id === agencyId) || {
+        name: agencyId,
+        color: agencyColors[agencyId] || '#999999'
+    };
+    
+    // Process each stop
+    stopsData.forEach(stop => {
+        if (!stop.Location || !stop.Location.Latitude || !stop.Location.Longitude || !stop.id) return;
+        
+        const stopObj = {
+            id: stop.id,
+            name: stop.Name || 'Unknown Stop',
+            agency: agencyId,
+            agencyName: agency.name,
+            position: {
+                lat: parseFloat(stop.Location.Latitude),
+                lng: parseFloat(stop.Location.Longitude)
+            },
+            lines: ''
+        };
+        
+        stops.push(stopObj);
+        
+        // Add stop marker to the map
+        const marker = L.marker([stopObj.position.lat, stopObj.position.lng], {
+            icon: createStopIcon(),
+            title: stopObj.name
+        });
+        
+        marker.bindPopup(`
+            <strong>${stopObj.name}</strong><br>
+            ${stopObj.agencyName}
+        `);
+        
+        stopLayer.addLayer(marker);
+    });
+    
+    console.log(`Added ${stopsData.length} stops for ${agency.name}`);
+}
