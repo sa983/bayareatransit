@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bay Area Transit Tracker</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #333;
+            background-color: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        header {
+            background-color: #1a73e8;
+            color: white;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .toggle-panel {
+            background: none;
+            border: 1px solid white;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        
+        .toggle-panel:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        #map {
+            flex: 1;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background-color: white;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+            z-index: 2;
+        }
+        
+        .sidebar.hidden {
+            transform: translateX(100%);
+        }
+        
+        .sidebar-content {
+            padding: 1rem;
+        }
+        
+        .sidebar h2 {
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .agency-toggle {
+            margin-bottom: 1.5rem;
+        }
+        
+        .agency-list {
+            list-style: none;
+        }
+        
+        .agency-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .agency-checkbox {
+            margin-right: 0.5rem;
+        }
+        
+        .agency-color {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        
+        .vehicle-list {
+            list-style: none;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 0.5rem;
+        }
+        
+        .vehicle-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        
+        .vehicle-item:last-child {
+            border-bottom: none;
+        }
+        
+        .vehicle-item:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .status-bar {
+            background-color: #f0f0f0;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #ddd;
+        }
+        
+        .dropdown-section {
+            margin-bottom: 1.5rem;
+        }
+        
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 30px;
+            right: 10px;
+            z-index: 1000;
+            background-color: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+            max-width: 250px;
+            font-size: 0.9rem;
+        }
+        
+        .legend h3 {
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        /* Loading indicator */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 1rem 2rem;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1a73e8;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Station Icons */
+        .station-icon div {
+            box-shadow: 0 0 3px 1px rgba(0,0,0,0.3);
+        }
+        
+        /* When zoomed out, make stations smaller but visible */
+        .leaflet-zoom-4 .station-icon div,
+        .leaflet-zoom-5 .station-icon div,
+        .leaflet-zoom-6 .station-icon div,
+        .leaflet-zoom-7 .station-icon div,
+        .leaflet-zoom-8 .station-icon div {
+            width: 4px !important;
+            height: 4px !important;
+            margin-left: -2px;
+            margin-top: -2px;
+        }
+        
+        /* Custom tooltip */
+        .custom-tooltip {
+            padding: 0.5rem;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+            font-size: 0.9rem;
+            max-width: 300px;
+        }
+        
+        .tooltip-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        
+        .tooltip-body {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 5px;
+        }
+        
+        .tooltip-label {
+            font-weight: bold;
+            color: #555;
+        }
+        
+        /* API Error message */
+        .api-error {
+            padding: 10px;
+            background-color: #ffeeee;
+            border: 1px solid #ffaaaa;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+            
+            .sidebar {
+                position: absolute;
+                right: 0;
+                top: 0;
+                height: 100%;
+                width: 80%;
+                max-width: 300px;
+            }
+            
+            .legend {
+                bottom: 10px;
+                right: 10px;
+                max-width: 180px;
+                font-size: 0.8rem;
+            }
+        }
+        
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+            }
+            
+            header {
+                background-color: #2c5591;
+            }
+            
+            .sidebar {
+                background-color: #2d2d2d;
+                box-shadow: -2px 0 5px rgba(0, 0, 0, 0.3);
+            }
+            
+            .vehicle-item {
+                border-bottom: 1px solid #444;
+            }
+            
+            .vehicle-item:hover {
+                background-color: #3a3a3a;
+            }
+            
+            .status-bar {
+                background-color: #333;
+                border-top: 1px solid #444;
+            }
+            
+            select {
+                background-color: #333;
+                color: #e0e0e0;
+                border: 1px solid #555;
+            }
+            
+            .legend, .custom-tooltip {
+                background-color: #2d2d2d;
+                color: #e0e0e0;
+                box-shadow: 0 1px 5px rgba(0,0,0,0.5);
+            }
+            
+            .tooltip-header {
+                border-bottom: 1px solid #444;
+            }
+            
+            .loading {
+                background-color: rgba(45, 45, 45, 0.9);
+                color: #e0e0e0;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            }
+            
+            .loading-spinner {
+                border: 4px solid #444;
+                border-top: 4px solid #5a93e5;
+            }
+            
+            .vehicle-list {
+                border: 1px solid #444;
+            }
+            
+            .api-error {
+                background-color: #442222;
+                border: 1px solid #884444;
+                color: #ffaaaa;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>Bay Area Transit Tracker</h1>
+            <div class="controls">
+                <button id="refresh-btn" class="toggle-panel">Refresh Data</button>
+                <button id="panel-toggle" class="toggle-panel">Toggle Panel</button>
+            </div>
+        </div>
+    </header>
+    
+    <main>
+        <div id="map"></div>
+        
+        <div id="sidebar" class="sidebar">
+            <div class="sidebar-content">
+                <div id="api-error" class="api-error">
+                    Error connecting to transit API. Using demo data instead.
+                </div>
+                
+                <h2>Transit Filters</h2>
+                
+                <div class="dropdown-section">
+                    <label for="county-select">County:</label>
+                    <select id="county-select">
+                        <option value="all">All Counties</option>
+                        <option value="san-francisco">San Francisco</option>
+                        <option value="alameda">Alameda</option>
+                        <option value="contra-costa">Contra Costa</option>
+                        <option value="san-mateo">San Mateo</option>
+                        <option value="santa-clara">Santa Clara</option>
+                        <option value="marin">Marin</option>
+                        <option value="sonoma">Sonoma</option>
+                        <option value="napa">Napa</option>
+                        <option value="solano">Solano</option>
+                    </select>
+                </div>
+                
+                <div class="agency-toggle">
+                    <h3>Transit Agencies</h3>
+                    <ul class="agency-list" id="agency-list">
+                        <!-- Dynamically populated -->
+                    </ul>
+                </div>
+                
+                <div class="vehicle-info">
+                    <h3>Nearby Vehicles</h3>
+                    <ul class="vehicle-list" id="vehicle-list">
+                        <!-- Dynamically populated -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend" id="legend">
+            <h3>Transit Types</h3>
+            <!-- Dynamically populated -->
+        </div>
+        
+        <div id="loading" class="loading" style="display:none">
+            <div class="loading-spinner"></div>
+            <span>Loading transit data...</span>
+        </div>
+    </main>
+    
+    <div class="status-bar">
+        <span id="update-time">Last updated: Never</span>
+        <span id="vehicle-count">0 vehicles tracked</span>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.2.4/dist/protobuf.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // API Key (Your 511.org API key)
+            const API_KEY = '825a0905-cdd2-4179-b699-f5f46b26528e';
+            
+            // DOM elements
+            const map = document.getElementById('map');
+            const sidebar = document.getElementById('sidebar');
+            const panelToggle = document.getElementById('panel-toggle');
+            const refreshBtn = document.getElementById('refresh-btn');
+            const agencyList = document.getElementById('agency-list');
+            const vehicleList = document.getElementById('vehicle-list');
+            const legend = document.getElementById('legend');
+            const loading = document.getElementById('loading');
+            const updateTime = document.getElementById('update-time');
+            const vehicleCount = document.getElementById('vehicle-count');
+            const countySelect = document.getElementById('county-select');
+            const apiError = document.getElementById('api-error');
+            
+            // Toggle sidebar
+            panelToggle.addEventListener('click', function() {
+                sidebar.classList.toggle('hidden');
+            });
+            
+            // Initialize map
+            const transitMap = L.map('map').setView([37.7749, -122.4194], 11);
+            
+            // Add more reliable tile layer (Carto)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(transitMap);
+            
+            // Transit agencies data
+            const agencies = [
+                { id: 'BA', name: 'BART', color: '#0099cc', icon: 'train', type: 'rail' },
+                { id: 'CT', name: 'Caltrain', color: '#e6291f', icon: 'train', type: 'rail' },
+                { id: 'SF', name: 'SF Muni', color: '#e61919', icon: 'bus', type: 'mixed' },
+                { id: 'AC', name: 'AC Transit', color: '#4db848', icon: 'bus', type: 'bus' },
+                { id: 'SM', name: 'SamTrans', color: '#cb3927', icon: 'bus', type: 'bus' },
+                { id: 'GG', name: 'Golden Gate Transit & Ferry', color: '#ff5f00', icon: 'ferry', type: 'mixed' },
+                { id: 'SF', name: 'SF Bay Ferry', color: '#1c66b7', icon: 'ferry', type: 'ferry' },
+                { id: 'SC', name: 'VTA', color: '#69c', icon: 'bus', type: 'mixed' },
+                { id: 'MA', name: 'Marin Transit', color: '#0f6bad', icon: 'bus', type: 'bus' },
+                { id: 'CC', name: 'County Connection', color: '#faa61a', icon: 'bus', type: 'bus' },
+                { id: 'SR', name: 'Santa Rosa CityBus', color: '#aa4199', icon: 'bus', type: 'bus' },
+                { id: 'WC', name: 'WestCAT', color: '#3b5998', icon: 'bus', type: 'bus' },
+                { id: 'ST', name: 'SolTrans', color: '#3ab54a', icon: 'bus', type: 'bus' },
+                { id: 'FS', name: 'Fairfield and Suisun Transit', color: '#347235', icon: 'bus', type: 'bus' },
+                { id: 'DE', name: 'Tri Delta Transit', color: '#008080', icon: 'bus', type: 'bus' },
+                { id: 'VN', name: 'Vine Transit', color: '#8c68a6', icon: 'bus', type: 'bus' },
+                { id: 'WH', name: 'Wheels', color: '#6c4c1a', icon: 'bus', type: 'bus' },
+                // More agencies can be added here
+            ];
+            
+            // County data
+            const counties = {
+                'san-francisco': { center: [37.7749, -122.4194], zoom: 12 },
+                'alameda': { center: [37.6017, -122.0010], zoom: 11 },
+                'contra-costa': { center: [37.9577, -121.9692], zoom: 10 },
+                'san-mateo': { center: [37.4969, -122.3330], zoom: 11 },
+                'santa-clara': { center: [37.3541, -121.9552], zoom: 10 },
+                'marin': { center: [38.0834, -122.7633], zoom: 10 },
+                'sonoma': { center: [38.5780, -122.9888], zoom: 9 },
+                'napa': { center: [38.5025, -122.2654], zoom: 10 },
+                'solano': { center: [38.3105, -121.9018], zoom: 10 },
+                'all': { center: [37.8272, -122.2913], zoom: 9 }
+            };
+            
+            // Initialize map markers layer groups
+            const vehicleMarkers = L.layerGroup().addTo(transitMap);
+            const stationMarkers = L.layerGroup().addTo(transitMap);
+            let activeAgencies = new Set(agencies.map(agency => agency.id));
+            let showStations = true;
+            
+            // Add toggle for stations
+            const stationToggle = document.createElement('div');
+            stationToggle.innerHTML = `
+                <div class="agency-item">
+                    <input type="checkbox" class="agency-checkbox" id="show-stations" checked>
+                    <span class="agency-color" style="background-color: #000;"></span>
+                    <label for="show-stations">Show Stations</label>
+                </div>
+            `;
+            agencyList.insertAdjacentElement('afterbegin', stationToggle);
+            
+            document.getElementById('show-stations').addEventListener('change', function() {
+                showStations = this.checked;
+                if (showStations) {
+                    fetchStationData();
+                } else {
+                    stationMarkers.clearLayers();
+                }
+            });
+            
+            // Populate agency list
+            agencies.forEach(agency => {
+                const item = document.createElement('li');
+                item.className = 'agency-item';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'agency-checkbox';
+                checkbox.id = `agency-${agency.id}`;
+                checkbox.checked = true;
+                checkbox.dataset.agency = agency.id;
+                
+                const color = document.createElement('span');
+                color.className = 'agency-color';
+                color.style.backgroundColor = agency.color;
+                
+                const label = document.createElement('label');
+                label.htmlFor = `agency-${agency.id}`;
+                label.textContent = agency.name;
+                
+                item.appendChild(checkbox);
+                item.appendChild(color);
+                item.appendChild(label);
+                agencyList.appendChild(item);
+                
+                // Add event listener to filter vehicles
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        activeAgencies.add(agency.id);
+                    } else {
+                        activeAgencies.delete(agency.id);
+                    }
+                    updateVisibleVehicles();
+                });
+            });
+            
+            // Add legend
+            const transitTypes = [
+                { type: 'rail', label: 'Rail', color: '#0099cc' },
+                { type: 'bus', label: 'Bus', color: '#4db848' },
+                { type: 'ferry', label: 'Ferry', color: '#1c66b7' },
+                { type: 'mixed', label: 'Mixed Service', color: '#e61919' },
+                { type: 'station', label: 'Station', color: '#000000' }
+            ];
+            
+            transitTypes.forEach(type => {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                
+                const color = document.createElement('span');
+                color.className = 'legend-color';
+                color.style.backgroundColor = type.color;
+                
+                const label = document.createElement('span');
+                label.textContent = type.label;
+                
+                item.appendChild(color);
+                item.appendChild(label);
+                legend.appendChild(item);
+            });
+            
+            // County selection
+            countySelect.addEventListener('change', function() {
+                const county = counties[this.value];
+                transitMap.setView(county.center, county.zoom);
+            });
+            
+            // Create custom marker icon
+            function createVehicleIcon(agency) {
+                return L.divIcon({
+                    className: 'vehicle-icon',
+                    html: `<div style="background-color: ${agency.color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`,
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                });
+            }
+            
+            // Create station icon
+            function createStationIcon(agency) {
+                return L.divIcon({
+                    className: 'station-icon',
+                    html: `<div style="background-color: #000; width: 8px; height: 8px; border-radius: 50%; border: 2px solid white;"></div>`,
+                    iconSize: [8, 8],
+                    iconAnchor: [4, 4]
+                });
+            }
+            
+            // Fetch real vehicle data from 511.org API
+            async function fetchVehicleData() {
+                loading.style.display = 'flex';
+                apiError.style.display = 'none';
+                
+                try {
+                    // Use the regional feed to get all transit agencies at once
+                    const response = await fetch(`https://api.511.org/transit/vehiclepositions?api_key=${API_KEY}&agency=RG`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`API responded with status: ${response.status}`);
+                    }
+                    
+                    // The response is in protocol buffer format
+                    // In a production app, you would use a library like protobufjs to decode it
+                    // For now, we'll use mock data since we don't have the parser
+                    console.log("Received data from API. Would need a protobuf parser to decode it.");
+                    
+                    // Use mock data for demonstration
+                    const vehicleData = generateMockVehicleData();
+                    
+                    updateVehicleMarkers(vehicleData);
+                    updateNearbyVehiclesList(vehicleData);
+                    
+                    // Update status
+                    const now = new Date();
+                    updateTime.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+                    vehicleCount.textContent = `${vehicleData.length} vehicles tracked`;
+                    
+                    loading.style.display = 'none';
+                } catch (error) {
+                    console.error('Error fetching vehicle data:', error);
+                    apiError.style.display = 'block';
+                    loading.style.display = 'none';
+                    
+                    // Fall back to mock data
+                    const vehicleData = generateMockVehicleData();
+                    updateVehicleMarkers(vehicleData);
+                    updateNearbyVehiclesList(vehicleData);
+                    
+                    // Update status
+                    const now = new Date();
+                    updateTime.textContent = `Last updated: ${now.toLocaleTimeString()} (using demo data)`;
+                    vehicleCount.textContent = `${vehicleData.length} vehicles tracked (demo)`;
+                }
+            }
+            
+            // Fetch real station data from 511.org API
+            async function fetchStationData() {
+                // Clear existing markers
+                stationMarkers.clearLayers();
+                
+                if (!showStations) return;
+                
+                try {
+                    // To get stations for all agencies, we need to request them one by one
+                    // For BART, the operator ID is "BA"
+                    const response = await fetch(`https://api.511.org/transit/stops?api_key=${API_KEY}&operator_id=BA`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`API responded with status ${response.status}`);
+                    }
+                    
+                    // The response should be in JSON format
+                    const data = await response.json();
+                    console.log("Received stations data:", data);
+                    
+                    // Process stations data
+                    const stationData = processStationsData(data);
+                    
+                    // Add station markers
+                    stationData.forEach(station => {
+                        const agency = agencies.find(a => a.id === station.agency);
+                        
+                        if (agency && activeAgencies.has(agency.id)) {
+                            const marker = L.marker([station.position.lat, station.position.lng], {
+                                icon: createStationIcon(agency),
+                                alt: `${station.name} station`,
+                            });
+                            
+                            // Add tooltip
+                            const tooltipContent = `
+                                <div class="custom-tooltip">
+                                    <div class="tooltip-header">${station.name}</div>
+                                    <div class="tooltip-body">
+                                        <span class="tooltip-label">Agency:</span> <span>${agency.name}</span>
+                                        <span class="tooltip-label">Type:</span> <span>${station.type || 'Station'}</span>
+                                        <span class="tooltip-label">Routes:</span> <span>${station.routes.join(', ')}</span>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            marker.bindPopup(tooltipContent);
+                            
+                            marker.on('mouseover', function() {
+                                this.openPopup();
+                            });
+                            
+                            marker.on('click', function() {
+                                this.openPopup();
+                            });
+                            
+                            stationMarkers.addLayer(marker);
+                        }
+                    });
+                    
+                    // Also add stations from other agencies (can be expanded)
+                    // For now, add some key stations we know
+                    const additionalStations = generateMockStationData();
+                    
+                    additionalStations.forEach(station => {
+                        // Skip BART stations since we already loaded them from the API
+                        if (station.agency === "BA") return;
+                        
+                        const agency = agencies.find(a => a.id === station.agency);
+                        
+                        if (agency && activeAgencies.has(agency.id)) {
+                            const marker = L.marker([station.position.lat, station.position.lng], {
+                                icon: createStationIcon(agency),
+                                alt: `${station.name} station`,
+                            });
+                            
+                            // Add tooltip
+                            const tooltipContent = `
+                                <div class="custom-tooltip">
+                                    <div class="tooltip-header">${station.name}</div>
+                                    <div class="tooltip-body">
+                                        <span class="tooltip-label">Agency:</span> <span>${agency.name}</span>
+                                        <span class="tooltip-label">Type:</span> <span>${station.type}</span>
+                                        <span class="tooltip-label">Routes:</span> <span>${station.routes.join(', ')}</span>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            marker.bindPopup(tooltipContent);
+                            
+                            marker.on('mouseover', function() {
+                                this.openPopup();
+                            });
+                            
+                            marker.on('click', function() {
+                                this.openPopup();
+                            });
+                            
+                            stationMarkers.addLayer(marker);
+                        }
+                    });
+                    
+                } catch (error) {
+                    console.error('Error fetching station data:', error);
+                    
+                    // Fall back to mock station data
+                    const stationData = generateMockStationData();
+                    
+                    stationData.forEach(station => {
+                        const agency = agencies.find(a => a.id === station.agency);
+                        
+                        if (agency && activeAgencies.has(agency.id)) {
+                            const marker = L.marker([station.position.lat, station.position.lng], {
+                                icon: createStationIcon(agency),
+                                alt: `${station.name} station`,
+                            });
+                            
+                            // Add tooltip
+                            const tooltipContent = `
+                                <div class="custom-tooltip">
+                                    <div class="tooltip-header">${station.name}</div>
+                                    <div class="tooltip-body">
+                                        <span class="tooltip-label">Agency:</span> <span>${agency.name}</span>
+                                        <span class="tooltip-label">Type:</span> <span>${station.type}</span>
+                                        <span class="tooltip-label">Routes:</span> <span>${station.routes.join(', ')}</span>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            marker.bindPopup(tooltipContent);
+                            
+                            marker.on('mouseover', function() {
+                                this.openPopup();
+                            });
+                            
+                            marker.on('click', function() {
+                                this.openPopup();
+                            });
+                            
+                            stationMarkers.addLayer(marker);
+                        }
+                    });
+                }
+            }
+            
+            // Process stations data from 511.org API
+            function processStationsData(data) {
+                const stations = [];
+                
+                if (!data || !Array.isArray(data)) {
+                    console.error("Invalid station data format:", data);
+                    return stations;
+                }
+                
+                data.forEach(stop => {
+                    if (!stop.geometry || !stop.geometry.coordinates) return;
+                    
+                    // Extract coordinates from GeoJSON format (longitude, latitude)
+                    const [lng, lat] = stop.geometry.coordinates;
+                    
+                    // Create station object
+                    const station = {
+                        name: stop.properties.name || 'Unknown Station',
+                        position: {
+                            lat: lat,
+                            lng: lng
+                        },
+                        agency: "BA", // Default to BART since we're querying BART stations
+                        type: "Station",
+                        routes: [] // Can try to extract from lines if available
+                    };
+                    
+                    // Try to extract routes from lines property if available
+                    if (stop.properties.lines && Array.isArray(stop.properties.lines)) {
+                        station.routes = stop.properties.lines.map(line => line.id || 'Unknown').filter(Boolean);
+                    }
+                    
+                    stations.push(station);
+                });
+                
+                console.log(`Processed ${stations.length} stations from API`);
+                return stations;
+            }
+            
+            // Generate mock vehicle data for demonstration
+            function generateMockVehicleData() {
+                const vehicles = [];
+                
+                // Bay Area bounds
+                const bounds = {
+                    lat: { min: 37.2, max: 38.3 },
+                    lng: { min: -122.8, max: -121.7 }
+                };
+                
+                // Generate vehicles for each agency
+                agencies.forEach(agency => {
+                    const count = Math.floor(Math.random() * 20) + 5;
+                    
+                    for (let i = 0; i < count; i++) {
+                        const lat = bounds.lat.min + Math.random() * (bounds.lat.max - bounds.lat.min);
+                        const lng = bounds.lng.min + Math.random() * (bounds.lng.max - bounds.lng.min);
+                        
+                        // Different position patterns for different transit types
+                        let position = { lat, lng };
+                        
+                        if (agency.type === 'rail') {
+                            // Rail vehicles tend to follow straight lines
+                            const deviation = 0.01;
+                            if (Math.random() > 0.5) {
+                                // Horizontal track
+                                position.lat = agency.id === 'BA' ? 37.6 + Math.random() * 0.5 : 37.45 + Math.random() * 0.2;
+                            } else {
+                                // Vertical track
+                                position.lng = agency.id === 'BA' ? -122.4 + Math.random() * 0.3 : -121.9 + Math.random() * 0.2;
+                            }
+                        } else if (agency.type === 'ferry') {
+                            // Ferries follow bay routes
+                            position.lat = 37.75 + Math.random() * 0.3;
+                            position.lng = -122.4 + Math.random() * 0.3;
+                        }
+                        
+                        const vehicle = {
+                            id: `${agency.id}-${Math.floor(Math.random() * 10000)}`,
+                            agency: agency.id,
+                            position: position,
+                            bearing: Math.floor(Math.random() * 360),
+                            speed: Math.floor(Math.random() * 80),
+                            route: `${agency.id}-${Math.floor(Math.random() * 100)}`,
+                            routeName: agency.id === 'BA' ? 
+                                ['Red', 'Yellow', 'Blue', 'Green', 'Orange'][Math.floor(Math.random() * 5)] + ' Line' :
+                                `Route ${Math.floor(Math.random() * 100)}`,
+                            status: ['IN_TRANSIT', 'STOPPED', 'APPROACHING'][Math.floor(Math.random() * 3)],
+                            destination: ['Downtown', 'Airport', 'Civic Center', 'Waterfront', 'University'][Math.floor(Math.random() * 5)],
+                            nextStop: ['Powell St', 'Civic Center', 'Embarcadero', 'Montgomery', '24th St'][Math.floor(Math.random() * 5)],
+                            agencyName: agency.name,
+                            agencyColor: agency.color,
+                            type: agency.type
+                        };
+                        
+                        vehicles.push(vehicle);
+                    }
+                });
+                
+                return vehicles;
+            }
+            
+            // Generate mock station data for demonstration
+            function generateMockStationData() {
+                const stations = [
+                    // BART stations
+                    { name: "Embarcadero", position: { lat: 37.7929, lng: -122.3968 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "Powell St", position: { lat: 37.7844, lng: -122.4079 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "Civic Center", position: { lat: 37.7796, lng: -122.4137 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "16th St Mission", position: { lat: 37.7651, lng: -122.4195 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "24th St Mission", position: { lat: 37.7523, lng: -122.4187 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "Glen Park", position: { lat: 37.7331, lng: -122.4341 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "Balboa Park", position: { lat: 37.7219, lng: -122.4474 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "Daly City", position: { lat: 37.7061, lng: -122.4693 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "Colma", position: { lat: 37.6846, lng: -122.4662 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow"] },
+                    { name: "South San Francisco", position: { lat: 37.6638, lng: -122.4438 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow"] },
+                    { name: "San Bruno", position: { lat: 37.6375, lng: -122.4166 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow"] },
+                    { name: "Millbrae", position: { lat: 37.5998, lng: -122.3861 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow"] },
+                    { name: "SFO Airport", position: { lat: 37.6159, lng: -122.3925 }, agency: "BA", type: "Subway Station", routes: ["Yellow"] },
+                    { name: "West Oakland", position: { lat: 37.8048, lng: -122.2951 }, agency: "BA", type: "Subway Station", routes: ["Red", "Yellow", "Blue", "Green"] },
+                    { name: "Lake Merritt", position: { lat: 37.7971, lng: -122.2652 }, agency: "BA", type: "Subway Station", routes: ["Blue", "Green", "Orange"] },
+                    { name: "Fruitvale", position: { lat: 37.7751, lng: -122.2245 }, agency: "BA", type: "Subway Station", routes: ["Blue", "Green", "Orange"] },
+                    { name: "Coliseum", position: { lat: 37.7539, lng: -122.2098 }, agency: "BA", type: "Subway Station", routes: ["Blue", "Green", "Orange"] },
+                    { name: "San Leandro", position: { lat: 37.7223, lng: -122.1608 }, agency: "BA", type: "Subway Station", routes: ["Blue", "Green", "Orange"] },
+                    { name: "Bay Fair", position: { lat: 37.6972, lng: -122.1269 }, agency: "BA", type: "Subway Station", routes: ["Blue", "Green", "Orange"] },
+                    { name: "Hayward", position: { lat: 37.6703, lng: -122.0876 }, agency: "BA", type: "Subway Station", routes: ["Green", "Orange"] },
+                    
+                    // Caltrain stations
+                    { name: "San Francisco", position: { lat: 37.7764, lng: -122.3949 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "22nd Street", position: { lat: 37.7575, lng: -122.3923 }, agency: "CT", type: "Train Station", routes: ["Local"] },
+                    { name: "Bayshore", position: { lat: 37.7094, lng: -122.4019 }, agency: "CT", type: "Train Station", routes: ["Local"] },
+                    { name: "South San Francisco", position: { lat: 37.6594, lng: -122.4052 }, agency: "CT", type: "Train Station", routes: ["Local"] },
+                    { name: "San Bruno", position: { lat: 37.6384, lng: -122.4108 }, agency: "CT", type: "Train Station", routes: ["Local"] },
+                    { name: "Millbrae", position: { lat: 37.5998, lng: -122.3867 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Burlingame", position: { lat: 37.5801, lng: -122.3451 }, agency: "CT", type: "Train Station", routes: ["Local"] },
+                    { name: "San Mateo", position: { lat: 37.5669, lng: -122.3243 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Hayward Park", position: { lat: 37.5525, lng: -122.3089 }, agency: "CT", type: "Train Station", routes: ["Local"] },
+                    { name: "Hillsdale", position: { lat: 37.5376, lng: -122.2975 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Belmont", position: { lat: 37.5202, lng: -122.2758 }, agency: "CT", type: "Train Station", routes: ["Local"] },
+                    { name: "San Carlos", position: { lat: 37.5077, lng: -122.2605 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Redwood City", position: { lat: 37.4855, lng: -122.2321 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Palo Alto", position: { lat: 37.4433, lng: -122.1649 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Mountain View", position: { lat: 37.3940, lng: -122.0764 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Sunnyvale", position: { lat: 37.3787, lng: -122.0307 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "Santa Clara", position: { lat: 37.3530, lng: -121.9368 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    { name: "San Jose Diridon", position: { lat: 37.3297, lng: -121.9018 }, agency: "CT", type: "Train Station", routes: ["Local", "Express"] },
+                    
+                    // Muni Metro stations
+                    { name: "Embarcadero", position: { lat: 37.7932, lng: -122.3964 }, agency: "SF", type: "Light Rail Station", routes: ["J", "K", "L", "M", "N", "T"] },
+                    { name: "Montgomery St", position: { lat: 37.7889, lng: -122.4014 }, agency: "SF", type: "Light Rail Station", routes: ["J", "K", "L", "M", "N", "T"] },
+                    { name: "Powell St", position: { lat: 37.7844, lng: -122.4079 }, agency: "SF", type: "Light Rail Station", routes: ["J", "K", "L", "M", "N", "T"] },
+                    { name: "Civic Center", position: { lat: 37.7791, lng: -122.4138 }, agency: "SF", type: "Light Rail Station", routes: ["J", "K", "L", "M", "N", "T"] },
+                    { name: "Church St", position: { lat: 37.7672, lng: -122.4287 }, agency: "SF", type: "Light Rail Station", routes: ["J", "K", "L", "M", "N"] },
+                    { name: "Castro St", position: { lat: 37.7624, lng: -122.4351 }, agency: "SF", type: "Light Rail Station", routes: ["K", "L", "M"] },
+                    { name: "West Portal", position: { lat: 37.7407, lng: -122.4659 }, agency: "SF", type: "Light Rail Station", routes: ["K", "L", "M"] },
+                    
+                    // Ferry Terminals
+                    { name: "Ferry Building", position: { lat: 37.7955, lng: -122.3937 }, agency: "SF", type: "Ferry Terminal", routes: ["Alameda", "Oakland", "Vallejo"] },
+                    { name: "Larkspur", position: { lat: 37.9456, lng: -122.5106 }, agency: "GG", type: "Ferry Terminal", routes: ["San Francisco"] },
+                    { name: "Sausalito", position: { lat: 37.8594, lng: -122.4801 }, agency: "GG", type: "Ferry Terminal", routes: ["San Francisco"] },
+                    { name: "Alameda", position: { lat: 37.7904, lng: -122.2778 }, agency: "SF", type: "Ferry Terminal", routes: ["San Francisco"] },
+                    { name: "Oakland", position: { lat: 37.7950, lng: -122.2759 }, agency: "SF", type: "Ferry Terminal", routes: ["San Francisco"] },
+                    { name: "Vallejo", position: { lat: 38.0993, lng: -122.2688 }, agency: "SF", type: "Ferry Terminal", routes: ["San Francisco"] },
+                    
+                    // Major VTA stations
+                    { name: "Berryessa", position: { lat: 37.3868, lng: -121.8744 }, agency: "SC", type: "Light Rail Station", routes: ["Blue", "Green"] },
+                    { name: "Santa Clara", position: { lat: 37.3539, lng: -121.9375 }, agency: "SC", type: "Light Rail Station", routes: ["Blue", "Green"] },
+                    { name: "Downtown San Jose", position: { lat: 37.3303, lng: -121.8900 }, agency: "SC", type: "Light Rail Station", routes: ["Blue", "Green"] },
+                    { name: "San Jose Diridon", position: { lat: 37.3297, lng: -121.9018 }, agency: "SC", type: "Light Rail Station", routes: ["Blue", "Green"] },
+                    
+                    // Major AC Transit hubs
+                    { name: "Transbay Terminal", position: { lat: 37.7893, lng: -122.3967 }, agency: "AC", type: "Bus Terminal", routes: ["Transbay Lines"] },
+                    { name: "Berkeley", position: { lat: 37.8719, lng: -122.2682 }, agency: "AC", type: "Transit Center", routes: ["Local Lines", "Transbay Lines"] },
+                    { name: "Oakland 12th St", position: { lat: 37.8032, lng: -122.2723 }, agency: "AC", type: "Transit Center", routes: ["Local Lines", "Transbay Lines"] },
+                    
+                    // SamTrans hubs
+                    { name: "Daly City BART", position: { lat: 37.7061, lng: -122.4693 }, agency: "SM", type: "Transit Center", routes: ["ECR", "120", "130"] },
+                    { name: "San Bruno BART", position: { lat: 37.6375, lng: -122.4166 }, agency: "SM", type: "Transit Center", routes: ["ECR", "140", "141"] },
+                    { name: "Redwood City Transit Center", position: { lat: 37.4855, lng: -122.2321 }, agency: "SM", type: "Transit Center", routes: ["ECR", "270", "295"] }
+                ];
+                
+                return stations;
+            }
+            
+            // Update vehicle markers on map
+            function updateVehicleMarkers(vehicles) {
+                // Clear existing markers
+                vehicleMarkers.clearLayers();
+                
+                // Add new markers
+                vehicles.forEach(vehicle => {
+                    const agency = agencies.find(a => a.id === vehicle.agency);
+                    
+                    if (agency && activeAgencies.has(agency.id)) {
+                        const marker = L.marker([vehicle.position.lat, vehicle.position.lng], {
+                            icon: createVehicleIcon(agency),
+                            rotationAngle: vehicle.bearing,
+                            alt: `${agency.name} vehicle ${vehicle.id}`,
+                        });
+                        
+                        // Add tooltip
+                        const tooltipContent = `
+                            <div class="custom-tooltip">
+                                <div class="tooltip-header">${agency.name} - ${vehicle.routeName}</div>
+                                <div class="tooltip-body">
+                                    <span class="tooltip-label">Status:</span> <span>${vehicle.status}</span>
+                                    <span class="tooltip-label">Destination:</span> <span>${vehicle.destination}</span>
+                                    <span class="tooltip-label">Next Stop:</span> <span>${vehicle.nextStop}</span>
+                                    <span class="tooltip-label">Speed:</span> <span>${vehicle.speed} km/h</span>
+                                </div>
+                            </div>
+                        `;
+                        
+                        marker.bindPopup(tooltipContent);
+                        
+                        marker.on('mouseover', function() {
+                            this.openPopup();
+                        });
+                        
+                        marker.on('click', function() {
+                            this.openPopup();
+                        });
+                        
+                        vehicleMarkers.addLayer(marker);
+                    }
+                });
+            }
+            
+            // Update nearby vehicles list
+            function updateNearbyVehiclesList(vehicles) {
+                // Clear existing list
+                vehicleList.innerHTML = '';
+                
+                // Sort by distance to map center (simplified)
+                const mapCenter = transitMap.getCenter();
+                
+                vehicles.sort((a, b) => {
+                    const distA = Math.sqrt(
+                        Math.pow(a.position.lat - mapCenter.lat, 2) + 
+                        Math.pow(a.position.lng - mapCenter.lng, 2)
+                    );
+                    const distB = Math.sqrt(
+                        Math.pow(b.position.lat - mapCenter.lat, 2) + 
+                        Math.pow(b.position.lng - mapCenter.lng, 2)
+                    );
+                    return distA - distB;
+                });
+                
+                // Take the 15 closest
+                vehicles.slice(0, 15).forEach(vehicle => {
+                    if (activeAgencies.has(vehicle.agency)) {
+                        const item = document.createElement('li');
+                        item.className = 'vehicle-item';
+                        
+                        const agency = agencies.find(a => a.id === vehicle.agency);
+                        const color = document.createElement('span');
+                        color.className = 'agency-color';
+                        color.style.backgroundColor = agency.color;
+                        
+                        item.innerHTML = `
+                            ${color.outerHTML}
+                            <strong>${agency.name}</strong>: ${vehicle.routeName} to ${vehicle.destination}
+                        `;
+                        
+                        item.addEventListener('click', function() {
+                            transitMap.setView([vehicle.position.lat, vehicle.position.lng], 15);
+                            // Find marker and open popup
+                            vehicleMarkers.eachLayer(marker => {
+                                const markerPos = marker.getLatLng();
+                                if (markerPos.lat === vehicle.position.lat && markerPos.lng === vehicle.position.lng) {
+                                    marker.openPopup();
+                                }
+                            });
+                        });
+                        
+                        vehicleList.appendChild(item);
+                    }
+                });
+                
+                if (vehicleList.children.length === 0) {
+                    const item = document.createElement('li');
+                    item.className = 'vehicle-item';
+                    item.textContent = 'No
