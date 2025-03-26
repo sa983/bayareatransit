@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Base map layer - CartoDB positron
     const baseMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '© OpenStreetMap contributors © CARTO',
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
         'ST': '#3ab54a', // SolTrans
         'MA': '#0f6bad', // Marin Transit
         'GF': '#ff9900', // Golden Gate Ferry
-        'SF': '#1c66b7', // SF Bay Ferry
+        'SB': '#1c66b7', // SF Bay Ferry
         'SR': '#aa4199', // Santa Rosa CityBus
         'VN': '#8c68a6', // Vine Transit/Napa
         'SA': '#009933', // SMART Train
@@ -375,7 +375,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const delivery = data.Siri.ServiceDelivery.VehicleMonitoringDelivery;
         
         if (Array.isArray(delivery)) {
-            if (!delivery[0].VehicleActivity) return;
+            if (!delivery[0] || !delivery[0].VehicleActivity) return;
             vehicleActivities = delivery[0].VehicleActivity;
         } else {
             if (!delivery.VehicleActivity) return;
