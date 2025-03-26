@@ -157,7 +157,8 @@ document.addEventListener('DOMContentLoaded', function() {
         errorMessage.style.display = 'none';
         
         try {
-            const response = await fetch(`https://api.511.org/transit/operators?api_key=${API_KEY}&format=json`);
+            // Use local proxy instead of direct API call
+            const response = await fetch(`/api/operators`);
             
             if (!response.ok) {
                 throw new Error(`API error: ${response.status}`);
@@ -296,7 +297,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Fetch vehicle positions for specific agencies
+    // Fetch vehicle positions from proxy server
     async function fetchVehicles() {
         if (!showVehicles.checked) return;
         
@@ -321,10 +322,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 try {
                     console.log(`Fetching vehicles for ${agency.name} (${agency.id})`);
                     
-                    // Using the SIRI VehicleMonitoring API with specific agency
-                    const response = await fetch(
-                        `https://api.511.org/transit/VehicleMonitoring?api_key=${API_KEY}&agency=${agency.id}&format=json`
-                    );
+                    // Using the proxy server endpoint
+                    const response = await fetch(`/api/vehiclemonitoring/${agency.id}`);
                     
                     if (!response.ok) {
                         console.warn(`API error for ${agency.id}: ${response.status}`);
@@ -599,12 +598,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Fetch stops for a specific agency
+    // Fetch stops for a specific agency from proxy server
     async function fetchStops(agencyId) {
         if (!showStops.checked) return;
         
         try {
-            const response = await fetch(`https://api.511.org/transit/stops?api_key=${API_KEY}&operator_id=${agencyId}&format=json`);
+            // Using the proxy server endpoint
+            const response = await fetch(`/api/stops/${agencyId}`);
             
             if (!response.ok) {
                 throw new Error(`API error: ${response.status}`);
