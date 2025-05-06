@@ -1,2 +1,4 @@
-# Bay Area Transit 
-Creates a tracker of various public transit routes across the Bay Area
+# Chicago & Bay Area Transit 
+Stage 1 (Completed): Replicates the CTA dashboard
+Stage 2: Better CTA & Metra dashboard
+Stage 3: Bay Area Dashboard

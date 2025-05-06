@@ -1,4 +1,5 @@
 # Load required libraries
+# or do bulk install
 library(shiny)
 library(shinydashboard)
 library(leaflet)
