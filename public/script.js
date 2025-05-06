@@ -71,6 +71,16 @@ document.addEventListener('DOMContentLoaded', function() {
         'WH': '#6c4c1a'  // Wheels/LAVTA
     };
     
+    // BART line colors
+    const bartLineColors = {
+        'RED': '#ff0000',      // Richmond–Millbrae+SFO
+        'ORANGE': '#ff9933',   // Berryessa–Richmond
+        'YELLOW': '#ffff33',   // Antioch–SFO/Millbrae
+        'GREEN': '#339933',    // Berryessa–Daly City
+        'BLUE': '#0099cc',     // Dublin/Pleasanton–Daly City
+        'BEIGE': '#d5cfa3'     // Oakland Airport Connector
+    };
+    
     // State variables
     let agencies = [];
     let vehicles = [];
@@ -308,7 +318,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Get a list of monitored agencies from our active agencies
             const monitoredAgencies = agencies
                 .filter(a => a.monitored && activeAgencies.has(a.id))
-                .slice(0, 3); // Limit to 3 agencies to avoid rate limiting
+                .slice(0, 5); // Limit to 5 agencies to avoid rate limiting
             
             if (monitoredAgencies.length === 0) {
                 throw new Error('No monitored agencies selected');
@@ -406,11 +416,17 @@ document.addEventListener('DOMContentLoaded', function() {
             // Check if latitude and longitude are in reasonable bounds for Bay Area
             if (lat < 36.5 || lat > 38.5 || lng < -123.0 || lng > -121.0) return;
             
+            // For BART, use the appropriate line color
+            let vehicleColor = agency.color;
+            if (agency.id === 'BA' && journey.LineRef && bartLineColors[journey.LineRef]) {
+                vehicleColor = bartLineColors[journey.LineRef];
+            }
+            
             const vehicle = {
                 id: journey.VehicleRef || `${agency.id}-${Math.random().toString(36).substring(2, 9)}`,
                 agency: agency.id,
                 agencyName: agency.name,
-                color: agency.color,
+                color: vehicleColor,
                 position: {
                     lat: lat,
                     lng: lng
@@ -418,7 +434,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 bearing: journey.Bearing || 0,
                 route: journey.LineRef || 'Unknown',
                 destination: journey.DestinationName || 'Unknown',
-                timestamp: activity.RecordedAtTime
+                timestamp: activity.RecordedAtTime,
+                // Additional fields for BART
+                expectedArrival: journey.MonitoredCall ? journey.MonitoredCall.ExpectedArrivalTime : null,
+                nextStop: journey.MonitoredCall ? journey.MonitoredCall.StopPointName : null
             };
             
             vehicles.push(vehicle);
@@ -443,9 +462,19 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             'BA': { // BART
                 lines: [
-                    [[37.77, -122.42], [37.80, -122.27]], // SF to East Bay
-                    [[37.77, -122.42], [37.70, -122.45]], // SF to south
-                    [[37.80, -122.27], [37.60, -122.10]], // East Bay
+                    // Yellow line (Antioch-SFO)
+                    [[37.70, -122.40], [37.85, -122.30]], // SF to East Bay
+                    // Red line (Richmond-Millbrae)
+                    [[37.93, -122.35], [37.60, -122.38]], // Richmond to Millbrae
+                    // Orange line (Richmond-Berryessa)
+                    [[37.93, -122.35], [37.37, -121.87]], // Richmond to Berryessa
+                    // Green line (Berryessa-Daly City)
+                    [[37.37, -121.87], [37.70, -122.47]], // Berryessa to Daly City
+                    // Blue line (Dublin-Daly City)
+                    [[37.70, -122.47], [37.70, -121.90]]  // Daly City to Dublin
+                ],
+                lineColors: [
+                    'YELLOW', 'RED', 'ORANGE', 'GREEN', 'BLUE'
                 ]
             },
             'AC': { // AC Transit
@@ -522,20 +551,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Line-based agencies like BART and Caltrain
                 for (let i = 0; i < count; i++) {
                     // Pick a random line
-                    const line = region.lines[Math.floor(Math.random() * region.lines.length)];
+                    const lineIndex = Math.floor(Math.random() * region.lines.length);
+                    const line = region.lines[lineIndex];
                     // Random point along the line
                     const t = Math.random();
                     const lat = line[0][0] + t * (line[1][0] - line[0][0]);
                     const lng = line[0][1] + t * (line[1][1] - line[0][1]);
                     
+                    // For BART, use the line colors
+                    let color = agency.color;
+                    let route = `${Math.floor(Math.random() * 100)}`;
+                    
+                    if (agency.id === 'BA' && region.lineColors) {
+                        const lineColor = region.lineColors[lineIndex];
+                        color = bartLineColors[lineColor] || agency.color;
+                        route = lineColor;
+                    }
+                    
                     vehicles.push({
                         id: `${agency.id}-demo-${i}`,
                         agency: agency.id,
                         agencyName: agency.name,
-                        color: agency.color,
+                        color: color,
                         position: { lat, lng },
                         bearing: Math.floor(Math.random() * 360),
-                        route: `${Math.floor(Math.random() * 100)}`,
+                        route: route,
                         destination: ['Downtown', 'Airport', 'Transit Center'][Math.floor(Math.random() * 3)],
                         timestamp: new Date().toISOString()
                     });
@@ -570,11 +610,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 title: `${vehicle.agencyName} - ${vehicle.route}`
             });
             
-            marker.bindPopup(`
+            let popupContent = `
                 <strong>${vehicle.agencyName}</strong><br>
                 Route: ${vehicle.route}<br>
                 To: ${vehicle.destination}
-            `);
+            `;
+            
+            // Add extra info for BART
+            if (vehicle.agency === 'BA' && vehicle.nextStop) {
+                popupContent += `<br>Next stop: ${vehicle.nextStop}`;
+                if (vehicle.expectedArrival) {
+                    const arrivalTime = new Date(vehicle.expectedArrival);
+                    popupContent += `<br>Expected arrival: ${arrivalTime.toLocaleTimeString()}`;
+                }
+            }
+            
+            marker.bindPopup(popupContent);
             
             marker.on('click', function() {
                 this.openPopup();
@@ -755,11 +806,18 @@ document.addEventListener('DOMContentLoaded', function() {
             color.className = 'agency-color';
             color.style.backgroundColor = vehicle.color;
             
-            item.innerHTML = `
+            let itemContent = `
                 ${color.outerHTML}
                 <strong>${vehicle.agencyName}</strong><br>
                 Route ${vehicle.route} to ${vehicle.destination}
             `;
+            
+            // Add extra info for BART
+            if (vehicle.agency === 'BA' && vehicle.nextStop) {
+                itemContent += `<br>Next: ${vehicle.nextStop}`;
+            }
+            
+            item.innerHTML = itemContent;
             
             item.addEventListener('click', function() {
                 // Pan to vehicle position
